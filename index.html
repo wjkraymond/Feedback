@@ -85,7 +85,7 @@
     <div class="qr-text"><b>Scan to give feedback</b>Anonymous · takes 10 seconds<br><span class="url" id="formUrl"></span></div>
   </div>
   <div class="chart">
-    <div class="avg"><b id="avg">–</b><span id="votes">0 responses</span></div>
+    <div class="avg"><b id="avg">–</b><span id="votes">0 ratings</span></div>
     <div class="bars" id="bars"></div>
   </div>
   <div class="tools">
@@ -151,7 +151,7 @@ function drawChart() {
     document.getElementById('b' + i).style.height = Math.round(n / max * 100) + '%';
   });
   document.getElementById('avg').textContent = total ? avg.toFixed(1) : '–';
-  document.getElementById('votes').textContent = total + (total === 1 ? ' response' : ' responses');
+  document.getElementById('votes').textContent = total + (total === 1 ? ' rating' : ' ratings');
 }
 
 // Comment wall
@@ -263,7 +263,8 @@ document.getElementById('pdfBtn').addEventListener('click', () => {
     <p class="meta">${esc(QUESTION)}<br>Saved ${esc(now.toLocaleString())}</p>
     <div class="summary">
       <div><b>${total ? avg.toFixed(2) : '–'}</b>Average rating (out of 5)</div>
-      <div><b>${total}</b>Responses</div>
+      <div><b>${responses.length}</b>Responses</div>
+      <div><b>${total}</b>Ratings</div>
       <div><b>${withComments.length}</b>Comments</div>
     </div>
     <table class="dist">
@@ -271,7 +272,7 @@ document.getElementById('pdfBtn').addEventListener('click', () => {
     </table>
     <h2>Comments</h2>
     ${withComments.length ? withComments.map(r => `
-      <div class="item"><div class="info">Rating ${r.rating} · ${esc(fmt(r.time))}</div><div class="text">${esc(r.comment)}</div></div>`).join('')
+      <div class="item"><div class="info">${r.rating ? 'Rating ' + r.rating : 'No rating'} · ${esc(fmt(r.time))}</div><div class="text">${esc(r.comment)}</div></div>`).join('')
       : '<p>No comments.</p>'}
   `;
   const old = document.title;

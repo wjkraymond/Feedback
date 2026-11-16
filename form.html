@@ -37,7 +37,7 @@
 <div class="card">
   <form id="form" novalidate>
     <h1 id="question"></h1>
-    <p class="sub">Your answer is anonymous.</p>
+    <p class="sub">Your answer is anonymous. Give a rating, a comment, or both.</p>
     <div class="rate" id="rate" role="radiogroup" aria-label="Rating from 1 to 5"></div>
     <div class="ends"><span>1 = worst</span><span>5 = best</span></div>
     <label for="comment">Comments (optional)</label>
@@ -74,22 +74,25 @@ rate.innerHTML = GIFS.map((g, i) =>
 rate.addEventListener('click', e => {
   const o = e.target.closest('.opt');
   if (!o) return;
-  picked = Number(o.dataset.r);
-  rate.classList.add('picked');
+  // Tap the selected rating again to clear it (rating is optional)
+  picked = picked === Number(o.dataset.r) ? 0 : Number(o.dataset.r);
+  rate.classList.toggle('picked', picked > 0);
   rate.querySelectorAll('.opt').forEach(x => {
-    x.classList.toggle('sel', x === o);
-    x.setAttribute('aria-checked', x === o ? 'true' : 'false');
+    const on = picked > 0 && x === o;
+    x.classList.toggle('sel', on);
+    x.setAttribute('aria-checked', on ? 'true' : 'false');
   });
   err.textContent = '';
 });
 
 comment.addEventListener('input', () => {
   document.getElementById('chars').textContent = comment.value.length;
+  err.textContent = '';
 });
 
 document.getElementById('form').addEventListener('submit', async e => {
   e.preventDefault();
-  if (!picked) { err.textContent = 'Pick a rating from 1 to 5 first.'; return; }
+  if (!picked && !comment.value.trim()) { err.textContent = 'Give a rating or a comment first.'; return; }
   if (!API_URL || API_URL.includes('PASTE_')) { err.textContent = 'This form is not connected yet. Ask your teacher to set the web app URL in config.js.'; return; }
   send.disabled = true;
   send.textContent = 'Sending…';
@@ -97,11 +100,13 @@ document.getElementById('form').addEventListener('submit', async e => {
   try {
     const res = await fetch(API_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'submit', rating: picked, comment: comment.value.trim() })
+      body: JSON.stringify({ action: 'submit', rating: picked || null, comment: comment.value.trim() })
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Something went wrong');
-    document.getElementById('doneGif').src = GIFS[picked - 1];
+    const doneGif = document.getElementById('doneGif');
+    doneGif.hidden = !picked;
+    if (picked) doneGif.src = GIFS[picked - 1];
     document.getElementById('form').hidden = true;
     document.getElementById('done').hidden = false;
   } catch (ex) {
