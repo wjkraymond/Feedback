@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Class feedback board</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #fff; color: #1f1e1c; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Top strip (static, about 20% of the screen) */
+  .top { flex: 0 0 22vh; min-height: 160px; display: flex; gap: 2vw; padding: 1.4vh 1.6vw; background: #faf9f5; border-bottom: 1px solid #e6e4dd; }
+  .qr { display: flex; align-items: center; gap: 1.2vw; min-width: 0; }
+  .qr-box { height: 100%; aspect-ratio: 1; background: #fff; border: 1px solid #e6e4dd; border-radius: 10px; padding: 6px; display: flex; align-items: center; justify-content: center; }
+  .qr-box img, .qr-box canvas { width: 100% !important; height: 100% !important; image-rendering: pixelated; }
+  .qr-text { font-size: clamp(12px, 1.1vw, 18px); color: #6b6a65; line-height: 1.45; }
+  .qr-text b { display: block; color: #1f1e1c; font-weight: 600; font-size: clamp(15px, 1.6vw, 26px); }
+  .qr-text .url { font-size: clamp(11px, .85vw, 14px); word-break: break-all; }
+  .chart { flex: 1; display: flex; gap: 1.6vw; align-items: stretch; border-left: 1px solid #e6e4dd; padding-left: 1.6vw; min-width: 0; }
+  .avg { display: flex; flex-direction: column; justify-content: center; min-width: 90px; font-size: clamp(12px, 1vw, 16px); color: #6b6a65; }
+  .avg b { font-size: clamp(28px, 3.4vw, 56px); font-weight: 600; color: #1f1e1c; line-height: 1.05; }
+  .bars { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1vw; min-width: 0; }
+  .bar-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; min-height: 0; }
+  .bar-n { font-size: clamp(11px, .9vw, 15px); color: #6b6a65; }
+  .bar-track { flex: 1; width: 70%; display: flex; align-items: flex-end; min-height: 0; }
+  .bar { width: 100%; background: #7f77dd; border-radius: 4px 4px 0 0; transition: height .5s ease; min-height: 2px; }
+  .bar-gif { height: 6vh; aspect-ratio: 1; max-height: 56px; min-height: 28px; border-radius: 6px; object-fit: cover; flex: none; }
+  .tools { display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+  .btn { font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 8px; border: 1px solid #cfcdc5; background: #fff; color: #1f1e1c; cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: #f1efe8; }
+  .btn.danger { color: #a32d2d; }
+  .status { font-size: 12px; color: #9a9890; display: flex; align-items: center; gap: 6px; justify-content: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #9a9890; }
+  .dot.live { background: #1d9e75; }
+  .dot.bad { background: #e24b4a; }
+
+  /* Comment wall (scrollable, about 80%) */
+  .wall { flex: 1; overflow-y: auto; padding: 2.4vh 1.6vw 4vh; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 2.2vh 1.4vw; }
+  .bubble { position: relative; background: #eeedfe; color: #3c3489; border-radius: 18px; padding: 12px 18px; font-size: clamp(15px, 1.3vw, 24px); line-height: 1.4; max-width: 32%; animation: pop .45s ease-out; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .bubble::after { content: ""; position: absolute; left: 24px; bottom: -9px; border: 9px solid transparent; border-top-color: #eeedfe; border-bottom: 0; }
+  .bubble.new { background: #dcd9fb; }
+  .bubble.new::after { border-top-color: #dcd9fb; }
+  @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .empty { margin: auto; text-align: center; color: #9a9890; font-size: clamp(15px, 1.4vw, 22px); }
+  .notice { background: #faeeda; color: #633806; padding: 10px 16px; font-size: 14px; }
+
+  /* Reset dialog */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 10; }
+  .dialog { background: #fff; border-radius: 14px; padding: 22px; width: min(380px, 92vw); }
+  .dialog h2 { margin: 0 0 6px; font-size: 18px; }
+  .dialog p { margin: 0 0 14px; font-size: 14px; color: #6b6a65; line-height: 1.5; }
+  .dialog input { width: 100%; font: inherit; font-size: 16px; padding: 9px 12px; border: 1px solid #cfcdc5; border-radius: 8px; }
+  .dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .dialog .err { color: #a32d2d; font-size: 13px; min-height: 1em; margin-top: 8px; }
+  [hidden] { display: none !important; }
+
+  /* PDF report (only shown when printing) */
+  #report { display: none; }
+  @media print {
+    @page { margin: 16mm; }
+    html, body { height: auto; overflow: visible; display: block; }
+    .top, .wall, .notice, .overlay { display: none !important; }
+    #report { display: block; font-size: 12pt; color: #000; }
+    #report h1 { font-size: 20pt; margin: 0 0 4px; }
+    #report .meta { color: #555; margin: 0 0 16px; }
+    #report .summary { display: flex; gap: 32px; margin-bottom: 18px; }
+    #report .summary b { font-size: 22pt; display: block; }
+    #report table.dist { border-collapse: collapse; margin-bottom: 22px; }
+    #report table.dist td { padding: 3px 8px 3px 0; }
+    #report .dbar { height: 12px; background: #7f77dd; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    #report h2 { font-size: 14pt; margin: 18px 0 8px; }
+    #report .item { border-top: 1px solid #ddd; padding: 8px 0; break-inside: avoid; }
+    #report .item .info { color: #555; font-size: 10pt; }
+    #report .item .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  }
+</style>
+</head>
+<body>
+<div class="notice" id="notice" hidden>Not connected yet. Paste your Google Apps Script web app URL into config.js.</div>
+
+<div class="top">
+  <div class="qr">
+    <div class="qr-box" id="qr"></div>
+    <div class="qr-text"><b>Scan to give feedback</b>Anonymous · takes 10 seconds<br><span class="url" id="formUrl"></span></div>
+  </div>
+  <div class="chart">
+    <div class="avg"><b id="avg">–</b><span id="votes">0 responses</span></div>
+    <div class="bars" id="bars"></div>
+  </div>
+  <div class="tools">
+    <button class="btn" id="pdfBtn" type="button">Save to PDF</button>
+    <button class="btn danger" id="resetBtn" type="button">Reset page</button>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">Connecting</span></div>
+  </div>
+</div>
+
+<div class="wall" id="wall"><div class="empty" id="empty">Comments will appear here as they come in.</div></div>
+
+<div class="overlay" id="overlay" hidden>
+  <form class="dialog" id="resetForm">
+    <h2>Reset the board?</h2>
+    <p>This clears the ratings and comments from the board. Nothing is deleted. The old responses move to the "Archive" tab of your Google Sheet. Tip: save to PDF first.</p>
+    <input type="password" id="pin" placeholder="Teacher PIN" autocomplete="off">
+    <div class="err" id="resetErr"></div>
+    <div class="row">
+      <button class="btn" type="button" id="cancelReset">Cancel</button>
+      <button class="btn danger" type="submit" id="confirmReset">Reset</button>
+    </div>
+  </form>
+</div>
+
+<div id="report"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="config.js"></script>
+<script>
+const GIFS = ["gifs/1.gif", "gifs/2.gif", "gifs/3.gif", "gifs/4.gif", "gifs/5.gif"];
+const configured = API_URL && !API_URL.includes('PASTE_');
+let responses = [];
+const shown = new Set();
+let firstLoad = true;
+
+// QR code pointing at form.html in the same folder
+const formUrl = new URL('form.html', location.href).href;
+document.getElementById('formUrl').textContent = formUrl.replace(/^https?:\/\//, '');
+new QRCode(document.getElementById('qr'), { text: formUrl, width: 512, height: 512, correctLevel: QRCode.CorrectLevel.M });
+
+// Bar chart
+const bars = document.getElementById('bars');
+bars.innerHTML = GIFS.map((g, i) => `
+  <div class="bar-col">
+    <span class="bar-n" id="n${i}">0</span>
+    <div class="bar-track"><div class="bar" id="b${i}" style="height:0%"></div></div>
+    <img class="bar-gif" src="${g}" alt="Rating ${i + 1}">
+  </div>`).join('');
+
+function stats() {
+  const counts = [0, 0, 0, 0, 0];
+  responses.forEach(r => { if (r.rating >= 1 && r.rating <= 5) counts[r.rating - 1]++; });
+  const total = counts.reduce((a, b) => a + b, 0);
+  const avg = total ? counts.reduce((s, n, i) => s + n * (i + 1), 0) / total : 0;
+  return { counts, total, avg };
+}
+
+function drawChart() {
+  const { counts, total, avg } = stats();
+  const max = Math.max(...counts, 1);
+  counts.forEach((n, i) => {
+    document.getElementById('n' + i).textContent = n;
+    document.getElementById('b' + i).style.height = Math.round(n / max * 100) + '%';
+  });
+  document.getElementById('avg').textContent = total ? avg.toFixed(1) : '–';
+  document.getElementById('votes').textContent = total + (total === 1 ? ' response' : ' responses');
+}
+
+// Comment wall
+const wall = document.getElementById('wall');
+function addBubble(r, animate) {
+  const b = document.createElement('div');
+  b.className = 'bubble' + (animate ? ' new' : '');
+  if (!animate) b.style.animation = 'none';
+  b.textContent = r.comment;
+  wall.prepend(b);
+  if (animate) setTimeout(() => b.classList.remove('new'), 6000);
+}
+
+function render(list) {
+  const ids = new Set(list.map(r => r.id));
+  // A reset happened somewhere: clear the wall
+  if ([...shown].some(id => !ids.has(id))) {
+    shown.clear();
+    wall.querySelectorAll('.bubble').forEach(b => b.remove());
+  }
+  responses = list;
+  const sorted = [...list].sort((a, b) => new Date(a.time) - new Date(b.time));
+  sorted.forEach(r => {
+    if (shown.has(r.id)) return;
+    shown.add(r.id);
+    if (r.comment && r.comment.trim()) addBubble(r, !firstLoad);
+  });
+  firstLoad = false;
+  document.getElementById('empty').hidden = !!wall.querySelector('.bubble');
+  drawChart();
+}
+
+function setStatus(state) {
+  const dot = document.getElementById('dot');
+  dot.className = 'dot' + (state === 'live' ? ' live' : state === 'bad' ? ' bad' : '');
+  document.getElementById('statusText').textContent =
+    state === 'live' ? 'Live' : state === 'bad' ? 'Reconnecting' : 'Not connected';
+}
+
+let busy = false;
+async function poll() {
+  if (busy || !configured) return;
+  busy = true;
+  try {
+    const res = await fetch(API_URL + (API_URL.includes('?') ? '&' : '?') + 't=' + Date.now());
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    render(data.responses || []);
+    setStatus('live');
+  } catch (e) {
+    setStatus('bad');
+  } finally {
+    busy = false;
+  }
+}
+
+if (!configured) {
+  document.getElementById('notice').hidden = false;
+  setStatus('off');
+} else {
+  poll();
+  setInterval(poll, Math.max(2, REFRESH_SECONDS) * 1000);
+}
+
+// Reset
+const overlay = document.getElementById('overlay');
+const pin = document.getElementById('pin');
+const resetErr = document.getElementById('resetErr');
+document.getElementById('resetBtn').addEventListener('click', () => {
+  resetErr.textContent = '';
+  pin.value = '';
+  overlay.hidden = false;
+  pin.focus();
+});
+document.getElementById('cancelReset').addEventListener('click', () => { overlay.hidden = true; });
+overlay.addEventListener('click', e => { if (e.target === overlay) overlay.hidden = true; });
+pin.addEventListener('input', () => { resetErr.textContent = ''; });
+document.getElementById('resetForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!pin.value) { resetErr.textContent = 'Enter your teacher PIN.'; return; }
+  if (!configured) { resetErr.textContent = 'Not connected yet. Set the web app URL in config.js.'; return; }
+  const btn = document.getElementById('confirmReset');
+  btn.disabled = true; btn.textContent = 'Resetting…';
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'reset', pin: pin.value }) });
+    const data = await res.json();
+    if (!data.ok) { resetErr.textContent = data.error === 'Wrong PIN' ? 'That PIN is wrong.' : (data.error || 'Reset failed.'); return; }
+    overlay.hidden = true;
+    render([]);
+    poll();
+  } catch (ex) {
+    resetErr.textContent = "Couldn't reach the server. Try again.";
+  } finally {
+    btn.disabled = false; btn.textContent = 'Reset';
+  }
+});
+
+// Save to PDF (uses the browser's print dialog, choose "Save as PDF")
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+document.getElementById('pdfBtn').addEventListener('click', () => {
+  const { counts, total, avg } = stats();
+  const max = Math.max(...counts, 1);
+  const now = new Date();
+  const withComments = [...responses].filter(r => r.comment && r.comment.trim())
+    .sort((a, b) => new Date(a.time) - new Date(b.time));
+  const fmt = t => new Date(t).toLocaleString();
+  document.getElementById('report').innerHTML = `
+    <h1>Class feedback report</h1>
+    <p class="meta">${esc(QUESTION)}<br>Saved ${esc(now.toLocaleString())}</p>
+    <div class="summary">
+      <div><b>${total ? avg.toFixed(2) : '–'}</b>Average rating (out of 5)</div>
+      <div><b>${total}</b>Responses</div>
+      <div><b>${withComments.length}</b>Comments</div>
+    </div>
+    <table class="dist">
+      ${counts.map((n, i) => `<tr><td>Rating ${i + 1}</td><td style="width:260px"><div class="dbar" style="width:${Math.round(n / max * 100)}%"></div></td><td>${n}</td></tr>`).reverse().join('')}
+    </table>
+    <h2>Comments</h2>
+    ${withComments.length ? withComments.map(r => `
+      <div class="item"><div class="info">Rating ${r.rating} · ${esc(fmt(r.time))}</div><div class="text">${esc(r.comment)}</div></div>`).join('')
+      : '<p>No comments.</p>'}
+  `;
+  const old = document.title;
+  document.title = 'Class feedback ' + now.toISOString().slice(0, 10);
+  window.print();
+  document.title = old;
+});
+</script>
+</body>
+</html>
